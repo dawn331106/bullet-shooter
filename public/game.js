@@ -221,18 +221,16 @@
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    if (game.socket) {
-      game.socket.emit('arena-size', { width: canvas.width, height: canvas.height });
+    if (game.subMode !== 'online') {
+      ['p1', 'p2'].forEach((role) => {
+        const p = game.players[role];
+        if (!p) {
+          return;
+        }
+        p.x = clamp(p.x, p.radius, canvas.width - p.radius);
+        p.y = clamp(p.y, p.radius, canvas.height - p.radius);
+      });
     }
-
-    ['p1', 'p2'].forEach((role) => {
-      const p = game.players[role];
-      if (!p) {
-        return;
-      }
-      p.x = clamp(p.x, p.radius, canvas.width - p.radius);
-      p.y = clamp(p.y, p.radius, canvas.height - p.radius);
-    });
   }
 
   function createPlayer(role) {
@@ -747,7 +745,13 @@
 
   function getSocket() {
     if (!game.socket) {
-      game.socket = io({ reconnection: true, reconnectionAttempts: 4, timeout: 5000 });
+      game.socket = io({
+        reconnection: true,
+        reconnectionAttempts: 20,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        timeout: 20000
+      });
       bindSocketHandlers(game.socket);
     }
     return game.socket;
@@ -802,7 +806,9 @@
 
   function bindSocketHandlers(socket) {
     socket.on('connect', () => {
-      socket.emit('arena-size', { width: canvas.width, height: canvas.height });
+      if (game.subMode === 'online' && game.mode !== 'menu') {
+        showToast('Connected.');
+      }
     });
 
     socket.on('assigned-role', ({ role, roomCode }) => {
@@ -943,16 +949,19 @@
       enterMenu();
     });
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', (reason) => {
       if (game.subMode === 'online') {
-        showToast('Connection lost. Returning to menu.');
-        enterMenu();
+        if (reason === 'io server disconnect') {
+          showToast('Disconnected from match.');
+          enterMenu();
+        } else {
+          showToast('Connection lost. Reconnecting...');
+        }
       }
     });
 
     socket.on('connect_error', () => {
-      showToast('Unable to connect to server.');
-      enterMenu();
+      showToast('Server waking up... retrying connection.');
     });
   }
 

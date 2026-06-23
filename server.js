@@ -4,6 +4,8 @@ const http = require('http');
 const { Server } = require('socket.io');
 
 const PORT = process.env.PORT || 3000;
+const ARENA_WIDTH = 1280;
+const ARENA_HEIGHT = 720;
 
 const app = express();
 const server = http.createServer(app);
@@ -52,8 +54,8 @@ function freshMatchState() {
     countdownDurationMs: 3000,
     winner: null,
     arena: {
-      width: 1280,
-      height: 720
+      width: ARENA_WIDTH,
+      height: ARENA_HEIGHT
     }
   };
 }
@@ -529,18 +531,7 @@ io.on('connection', (socket) => {
     emitLobbyState(normalized, room);
   });
 
-  socket.on('arena-size', ({ width, height }) => {
-    const roomCode = socket.data.roomCode;
-    const room = rooms.get(roomCode);
-    if (!room) {
-      return;
-    }
-
-    if (Number.isFinite(width) && Number.isFinite(height)) {
-      room.matchState.arena.width = clamp(width, 640, 4096);
-      room.matchState.arena.height = clamp(height, 360, 2160);
-    }
-  });
+  // Arena size is fixed server-side for consistency across different client viewports.
 
   socket.on('input', ({ moveX, moveY, aimX, aimY }) => {
     const roomCode = socket.data.roomCode;
