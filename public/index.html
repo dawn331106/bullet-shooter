@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bullet Shooter Web</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <audio id="bgMusic" preload="auto" loop>
+    <source src="./music/Clavar La Espada.mp3" type="audio/mpeg" />
+  </audio>
+
+  <div id="ui-layer">
+    <div id="menu-screen" class="panel visible">
+      <h1>Bullet Shooter</h1>
+      <div class="menu-buttons">
+        <button id="btn-bot">Play vs Bot</button>
+        <button id="btn-create-room">Create Online Room</button>
+        <button id="btn-join-room">Join Online Room</button>
+      </div>
+
+      <div id="create-room-panel" class="subpanel hidden">
+        <p>Share this room code with your friend:</p>
+        <div id="room-code-label">Creating room...</div>
+      </div>
+
+      <div id="join-room-panel" class="subpanel hidden">
+        <label for="join-room-input">Room Code</label>
+        <input id="join-room-input" type="text" placeholder="ABC123" maxlength="6" />
+        <button id="btn-connect-room">Join Room</button>
+      </div>
+    </div>
+
+    <div id="lobby-screen" class="panel hidden">
+      <h2>Room Lobby</h2>
+      <p>Room Code</p>
+      <div id="lobby-room-code" class="code-pill">------</div>
+      <div class="lobby-list">
+        <div id="lobby-p1" class="lobby-slot">Player 1 (Host): Waiting...</div>
+        <div id="lobby-p2" class="lobby-slot">Player 2: Waiting...</div>
+      </div>
+      <div class="menu-buttons">
+        <button id="btn-lobby-start">Start Match</button>
+        <button id="btn-lobby-exit">Leave Lobby</button>
+      </div>
+    </div>
+
+    <div id="countdown-screen" class="overlay hidden"></div>
+
+    <div id="result-screen" class="panel hidden">
+      <h2 id="result-title">Victory</h2>
+      <div class="menu-buttons">
+        <button id="btn-rematch">Rematch</button>
+        <button id="btn-exit">Exit to Main Menu</button>
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="./game.js"></script>
+</body>
+</html>
