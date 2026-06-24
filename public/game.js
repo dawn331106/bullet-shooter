@@ -174,7 +174,12 @@
     hitFreezeUntil: 0,
     hitFlashUntil: 0,
     hitShakeUntil: 0,
-    hitShakePower: 0
+    hitShakePower: 0,
+    renderPlayers: {
+      p1: null,
+      p2: null
+    },
+    renderBullets: []
   };
 
   function clamp(v, min, max) {
@@ -197,6 +202,10 @@
 
   function randomRange(min, max) {
     return min + Math.random() * (max - min);
+  }
+
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
   }
 
   function showToast(message, timeout = 2500) {
@@ -895,6 +904,13 @@
       game.players.p1 = players.p1 || null;
       game.players.p2 = players.p2 || null;
 
+      if (!game.renderPlayers.p1 && game.players.p1) {
+        game.renderPlayers.p1 = { ...game.players.p1 };
+      }
+      if (!game.renderPlayers.p2 && game.players.p2) {
+        game.renderPlayers.p2 = { ...game.players.p2 };
+      }
+
       const nextMe = game.players[game.localRole];
       if (prevMe && nextMe && snapshot.mode === 'running') {
         const tookDamage = nextMe.health < prevMe.health;
@@ -913,6 +929,9 @@
         owner: b[4],
         radius: GAME.bulletRadius
       }));
+      if (game.renderBullets.length === 0) {
+        game.renderBullets = game.bullets.map((b) => ({ ...b }));
+      }
       game.boosters = snapshot.boosters.map((x) => ({
         id: x[0],
         x: x[1],
@@ -1093,8 +1112,8 @@
     ctx.fillText(`x${(player.bulletSpeedMultiplier || 1).toFixed(2)}`, player.x - 16, player.y - player.radius - 12);
   }
 
-  function drawBullets() {
-    game.bullets.forEach((b) => {
+  function drawBullets(list) {
+    list.forEach((b) => {
       ctx.fillStyle = b.owner === 'p1' ? '#ff8f3f' : '#59a0ff';
       ctx.beginPath();
       ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
@@ -1217,11 +1236,58 @@
     }
   }
 
-  function updateOnline() {
+  function updateOnline(dtSec) {
     if (!game.socket) {
       return;
     }
     sendOnlineInput();
+
+    const playerBlend = clamp(dtSec * 14, 0, 1);
+    ['p1', 'p2'].forEach((role) => {
+      const target = game.players[role];
+      if (!target) {
+        game.renderPlayers[role] = null;
+        return;
+      }
+
+      if (!game.renderPlayers[role]) {
+        game.renderPlayers[role] = { ...target };
+        return;
+      }
+
+      const view = game.renderPlayers[role];
+      view.x = lerp(view.x, target.x, playerBlend);
+      view.y = lerp(view.y, target.y, playerBlend);
+      view.angle = target.angle;
+      view.role = target.role;
+      view.radius = target.radius;
+      view.bulletSpeedMultiplier = target.bulletSpeedMultiplier;
+      view.health = target.health;
+      view.movementSpeedMultiplier = target.movementSpeedMultiplier;
+      view.shield = target.shield;
+      view.extraBullets = target.extraBullets;
+      view.connected = target.connected;
+    });
+
+    const bulletBlend = clamp(dtSec * 18, 0, 1);
+    if (game.renderBullets.length > game.bullets.length + 6) {
+      game.renderBullets = game.bullets.map((b) => ({ ...b }));
+      return;
+    }
+
+    const nextRenderBullets = [];
+    for (let i = 0; i < game.bullets.length; i += 1) {
+      const target = game.bullets[i];
+      const view = game.renderBullets[i] || { ...target };
+      view.x = lerp(view.x, target.x, bulletBlend);
+      view.y = lerp(view.y, target.y, bulletBlend);
+      view.vx = target.vx;
+      view.vy = target.vy;
+      view.owner = target.owner;
+      view.radius = target.radius;
+      nextRenderBullets.push(view);
+    }
+    game.renderBullets = nextRenderBullets;
   }
 
   function render() {
@@ -1238,15 +1304,24 @@
 
     drawArena();
     drawBoosters();
-    drawBullets();
+    const displayPlayers = game.subMode === 'online'
+      ? {
+        p1: game.renderPlayers.p1 || game.players.p1,
+        p2: game.renderPlayers.p2 || game.players.p2
+      }
+      : game.players;
+    const displayBullets = game.subMode === 'online'
+      ? (game.renderBullets.length ? game.renderBullets : game.bullets)
+      : game.bullets;
+    drawBullets(displayBullets);
 
-    drawPlayerShip(game.players.p1, {
+    drawPlayerShip(displayPlayers.p1, {
       body: '#ff8f3f',
       accent: '#ffd3a8',
       shadow: 'rgba(64, 28, 9, 0.5)'
     }, game.localRole === 'p1');
 
-    drawPlayerShip(game.players.p2, {
+    drawPlayerShip(displayPlayers.p2, {
       body: '#59a0ff',
       accent: '#d4e8ff',
       shadow: 'rgba(9, 34, 61, 0.5)'
@@ -1274,6 +1349,9 @@
     game.hitFlashUntil = 0;
     game.hitShakeUntil = 0;
     game.hitShakePower = 0;
+    game.renderPlayers.p1 = null;
+    game.renderPlayers.p2 = null;
+    game.renderBullets = [];
     canvas.style.transform = 'translate(0px, 0px)';
     stopMusic();
 
@@ -1303,7 +1381,7 @@
 
     if (!isFrozen) {
       if (game.subMode === 'online') {
-        updateOnline();
+        updateOnline(dtSec);
       } else {
         updateOffline(dtSec);
       }
