@@ -14,16 +14,20 @@
   const countdownScreen = document.getElementById('countdown-screen');
   const resultScreen = document.getElementById('result-screen');
   const resultTitle = document.getElementById('result-title');
+  const tutorialOverlay = document.getElementById('tutorial-overlay');
+  const tutorialPanel = document.getElementById('tutorial-panel');
   const toast = document.getElementById('toast');
 
   const btnBot = document.getElementById('btn-bot');
   const btnCreateRoom = document.getElementById('btn-create-room');
   const btnJoinRoom = document.getElementById('btn-join-room');
+  const btnHowToPlay = document.getElementById('btn-how-to-play');
   const btnLobbyStart = document.getElementById('btn-lobby-start');
   const btnLobbyExit = document.getElementById('btn-lobby-exit');
   const btnConnectRoom = document.getElementById('btn-connect-room');
   const btnRematch = document.getElementById('btn-rematch');
   const btnExit = document.getElementById('btn-exit');
+  const btnCloseTutorial = document.getElementById('btn-close-tutorial');
 
   const GAME = {
     playerRadius: 18,
@@ -215,6 +219,16 @@
   function hideSubPanels() {
     createRoomPanel.classList.add('hidden');
     joinRoomPanel.classList.add('hidden');
+  }
+
+  function openTutorial() {
+    tutorialOverlay.classList.remove('hidden');
+    tutorialOverlay.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeTutorial() {
+    tutorialOverlay.classList.add('hidden');
+    tutorialOverlay.setAttribute('aria-hidden', 'true');
   }
 
   function resizeCanvas() {
@@ -1318,6 +1332,10 @@
     joinRoomPanel.classList.remove('hidden');
   });
 
+  btnHowToPlay.addEventListener('click', () => {
+    openTutorial();
+  });
+
   btnLobbyStart.addEventListener('click', () => {
     ensureAudioReady();
     if (game.localRole !== 'p1') {
@@ -1366,9 +1384,28 @@
     enterMenu();
   });
 
+  btnCloseTutorial.addEventListener('click', () => {
+    closeTutorial();
+  });
+
+  tutorialOverlay.addEventListener('click', (e) => {
+    if (e.target === tutorialOverlay) {
+      closeTutorial();
+    }
+  });
+
+  tutorialPanel.addEventListener('click', (e) => {
+    e.stopPropagation();
+  });
+
   window.addEventListener('resize', resizeCanvas);
 
   window.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() === 'escape' && !tutorialOverlay.classList.contains('hidden')) {
+      closeTutorial();
+      return;
+    }
+
     inputState.keys.add(e.key.toLowerCase());
 
     if (e.key.toLowerCase() === 'escape' && game.mode !== 'menu') {
