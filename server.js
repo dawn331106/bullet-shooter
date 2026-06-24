@@ -6,6 +6,7 @@ const { Server } = require('socket.io');
 const PORT = process.env.PORT || 3000;
 const ARENA_WIDTH = 1280;
 const ARENA_HEIGHT = 720;
+const ONLINE_PLAYER_SPEED = 220;
 
 const app = express();
 const server = http.createServer(app);
@@ -69,7 +70,7 @@ function makePlayer(role) {
     y: 360,
     radius: 18,
     health: 3,
-    moveSpeed: 260,
+    moveSpeed: ONLINE_PLAYER_SPEED,
     movementSpeedMultiplier: 1,
     bulletSpeedMultiplier: 1,
     shield: false,
