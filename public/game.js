@@ -168,6 +168,10 @@
       p2Joined: false,
       canStart: false
     },
+    onlineArena: {
+      width: null,
+      height: null
+    },
     lastBotShotAt: 0,
     nextBoosterAt: 0,
     runningStartAt: 0,
@@ -240,7 +244,38 @@
     tutorialOverlay.setAttribute('aria-hidden', 'true');
   }
 
+  function applyOnlineArena(width, height) {
+    if (!Number.isFinite(width) || !Number.isFinite(height)) {
+      return;
+    }
+
+    const w = Math.max(320, Math.round(width));
+    const h = Math.max(200, Math.round(height));
+    game.onlineArena.width = w;
+    game.onlineArena.height = h;
+    canvas.width = w;
+    canvas.height = h;
+  }
+
+  function emitArenaSizeCandidate() {
+    if (!game.socket || game.subMode !== 'online') {
+      return;
+    }
+
+    game.socket.emit('arena-size', {
+      width: window.innerWidth,
+      height: window.innerHeight
+    });
+  }
+
   function resizeCanvas() {
+    if (game.subMode === 'online' && Number.isFinite(game.onlineArena.width) && Number.isFinite(game.onlineArena.height)) {
+      canvas.width = game.onlineArena.width;
+      canvas.height = game.onlineArena.height;
+      emitArenaSizeCandidate();
+      return;
+    }
+
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
@@ -839,26 +874,33 @@
       game.roomCode = roomCode;
       game.subMode = 'online';
       enterLobby();
+      emitArenaSizeCandidate();
       showToast(`Joined room ${roomCode} as ${role.toUpperCase()}`);
     });
 
-    socket.on('lobby-state', ({ roomCode, players, canStart }) => {
+    socket.on('lobby-state', ({ roomCode, players, canStart, arena }) => {
       game.roomCode = roomCode;
       game.lobby.p1Joined = !!players?.p1;
       game.lobby.p2Joined = !!players?.p2;
       game.lobby.canStart = !!canStart;
+      if (Array.isArray(arena) && arena.length === 2) {
+        applyOnlineArena(arena[0], arena[1]);
+      }
 
       if (game.subMode === 'online' && (game.mode === 'lobby' || game.mode === 'waiting-network')) {
         enterLobby();
       }
     });
 
-    socket.on('countdown-start', ({ startAt, durationMs }) => {
+    socket.on('countdown-start', ({ startAt, durationMs, arena }) => {
       game.mode = 'countdown';
       game.countdownDurationMs = durationMs;
       game.countdownStartAt = performance.now() - Math.max(0, Date.now() - startAt);
       const runningAtUnixMs = startAt + durationMs;
       game.runningStartAt = performance.now() + Math.max(0, runningAtUnixMs - Date.now());
+      if (Array.isArray(arena) && arena.length === 2) {
+        applyOnlineArena(arena[0], arena[1]);
+      }
       startMusic();
       countdownScreen.classList.remove('hidden');
       setPanelVisible(lobbyScreen, false);
@@ -929,6 +971,9 @@
         owner: b[4],
         radius: GAME.bulletRadius
       }));
+      if (Array.isArray(snapshot.arena) && snapshot.arena.length === 2) {
+        applyOnlineArena(snapshot.arena[0], snapshot.arena[1]);
+      }
       if (game.renderBullets.length === 0) {
         game.renderBullets = game.bullets.map((b) => ({ ...b }));
       }
@@ -1344,6 +1389,8 @@
     game.players.p2 = null;
     game.bullets = [];
     game.boosters = [];
+    game.onlineArena.width = null;
+    game.onlineArena.height = null;
     game.runningStartAt = 0;
     game.hitFreezeUntil = 0;
     game.hitFlashUntil = 0;
@@ -1370,6 +1417,7 @@
     game.lobby.p1Joined = false;
     game.lobby.p2Joined = false;
     game.lobby.canStart = false;
+    resizeCanvas();
   }
 
   let lastFrame = performance.now();
@@ -1509,8 +1557,10 @@
 
   canvas.addEventListener('mousemove', (e) => {
     const rect = canvas.getBoundingClientRect();
-    inputState.mouseX = e.clientX - rect.left;
-    inputState.mouseY = e.clientY - rect.top;
+    const scaleX = rect.width > 0 ? canvas.width / rect.width : 1;
+    const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
+    inputState.mouseX = (e.clientX - rect.left) * scaleX;
+    inputState.mouseY = (e.clientY - rect.top) * scaleY;
   });
 
   canvas.addEventListener('mousedown', (e) => {

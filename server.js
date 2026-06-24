@@ -7,6 +7,8 @@ const PORT = process.env.PORT || 3000;
 const ARENA_WIDTH = 1280;
 const ARENA_HEIGHT = 720;
 const ONLINE_PLAYER_SPEED = 220;
+const MIN_ARENA_WIDTH = 640;
+const MIN_ARENA_HEIGHT = 360;
 
 const app = express();
 const server = http.createServer(app);
@@ -38,6 +40,31 @@ function distSq(ax, ay, bx, by) {
   const dx = ax - bx;
   const dy = ay - by;
   return dx * dx + dy * dy;
+}
+
+function sanitizeViewport(width, height) {
+  if (!Number.isFinite(width) || !Number.isFinite(height)) {
+    return null;
+  }
+
+  return {
+    width: clamp(Math.round(width), MIN_ARENA_WIDTH, ARENA_WIDTH),
+    height: clamp(Math.round(height), MIN_ARENA_HEIGHT, ARENA_HEIGHT)
+  };
+}
+
+function recomputeRoomArena(room) {
+  const p1Viewport = room.clientViewports.p1;
+  const p2Viewport = room.clientViewports.p2;
+
+  if (!p1Viewport || !p2Viewport) {
+    room.matchState.arena.width = ARENA_WIDTH;
+    room.matchState.arena.height = ARENA_HEIGHT;
+    return;
+  }
+
+  room.matchState.arena.width = Math.min(p1Viewport.width, p2Viewport.width);
+  room.matchState.arena.height = Math.min(p1Viewport.height, p2Viewport.height);
 }
 
 function freshMatchState() {
@@ -85,6 +112,9 @@ function makePlayer(role) {
 }
 
 function resetRound(match) {
+  const arenaWidth = match.matchState.arena.width;
+  const arenaHeight = match.matchState.arena.height;
+
   match.matchState.bullets = [];
   match.matchState.boosters = [];
   match.matchState.nextBoosterAt = Date.now() + randomRange(10000, 15000);
@@ -92,8 +122,8 @@ function resetRound(match) {
   match.matchState.winner = null;
 
   if (match.matchState.players.p1) {
-    match.matchState.players.p1.x = 180;
-    match.matchState.players.p1.y = 360;
+    match.matchState.players.p1.x = clamp(180, 60, arenaWidth - 60);
+    match.matchState.players.p1.y = arenaHeight * 0.5;
     match.matchState.players.p1.health = 3;
     match.matchState.players.p1.movementSpeedMultiplier = 1;
     match.matchState.players.p1.bulletSpeedMultiplier = 1;
@@ -105,8 +135,8 @@ function resetRound(match) {
   }
 
   if (match.matchState.players.p2) {
-    match.matchState.players.p2.x = 1100;
-    match.matchState.players.p2.y = 360;
+    match.matchState.players.p2.x = clamp(arenaWidth - 180, 60, arenaWidth - 60);
+    match.matchState.players.p2.y = arenaHeight * 0.5;
     match.matchState.players.p2.health = 3;
     match.matchState.players.p2.movementSpeedMultiplier = 1;
     match.matchState.players.p2.bulletSpeedMultiplier = 1;
@@ -123,6 +153,8 @@ function startCountdown(roomCode, match) {
     return;
   }
 
+  recomputeRoomArena(match);
+
   resetRound(match);
   match.matchState.mode = 'countdown';
   match.matchState.countdownStartAt = Date.now();
@@ -130,7 +162,8 @@ function startCountdown(roomCode, match) {
 
   io.to(roomCode).emit('countdown-start', {
     startAt: match.matchState.countdownStartAt,
-    durationMs: match.matchState.countdownDurationMs
+    durationMs: match.matchState.countdownDurationMs,
+    arena: [match.matchState.arena.width, match.matchState.arena.height]
   });
 }
 
@@ -434,6 +467,10 @@ function createRoom() {
   const room = {
     matchState: freshMatchState(),
     rematchVotes: new Set(),
+    clientViewports: {
+      p1: null,
+      p2: null
+    },
     loop: null,
     lastTick: Date.now(),
     dtSec: 1 / 60
@@ -482,7 +519,8 @@ function emitLobbyState(roomCode, room) {
       p1: !!room.matchState.players.p1,
       p2: !!room.matchState.players.p2
     },
-    canStart: !!room.matchState.players.p1 && !!room.matchState.players.p2
+    canStart: !!room.matchState.players.p1 && !!room.matchState.players.p2,
+    arena: [room.matchState.arena.width, room.matchState.arena.height]
   });
 }
 
@@ -524,6 +562,7 @@ io.on('connection', (socket) => {
     player.socketId = socket.id;
     player.connected = true;
     room.matchState.players[role] = player;
+    room.clientViewports[role] = null;
 
     socket.emit('assigned-role', { role, roomCode: normalized });
     if (typeof ack === 'function') {
@@ -532,7 +571,27 @@ io.on('connection', (socket) => {
     emitLobbyState(normalized, room);
   });
 
-  // Arena size is fixed server-side for consistency across different client viewports.
+  socket.on('arena-size', ({ width, height }) => {
+    const roomCode = socket.data.roomCode;
+    const role = socket.data.role;
+    const room = rooms.get(roomCode);
+    if (!room || !role) {
+      return;
+    }
+
+    if (room.matchState.mode === 'running') {
+      return;
+    }
+
+    const viewport = sanitizeViewport(width, height);
+    if (!viewport) {
+      return;
+    }
+
+    room.clientViewports[role] = viewport;
+    recomputeRoomArena(room);
+    emitLobbyState(roomCode, room);
+  });
 
   socket.on('input', ({ moveX, moveY, aimX, aimY }) => {
     const roomCode = socket.data.roomCode;
@@ -620,6 +679,9 @@ io.on('connection', (socket) => {
     if (room.matchState.players[role]) {
       room.matchState.players[role] = null;
     }
+    room.clientViewports[role] = null;
+
+    recomputeRoomArena(room);
 
     room.rematchVotes.clear();
     room.matchState.mode = 'waiting';
